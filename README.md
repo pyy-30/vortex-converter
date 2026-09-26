@@ -98,5 +98,6 @@
 * If zstandard won't install, try "pip3 install zstandard".
 * Trying to convert outdated Vortex files could fail. If that happens, open your vortex file, make a small change (like moving a part) and save the file.
 * Trying to convert newer Vortex files than designed will fail. If that happens, please download the newer version, you can find every version uploaded in this repo.
+* Any other issues report on the vortex forum (or in the repo)
 
 *Last updated: 2026-09-26 (v0.5.3 support)*
