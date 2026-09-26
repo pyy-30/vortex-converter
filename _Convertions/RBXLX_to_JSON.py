@@ -81,9 +81,13 @@ MATERIAL_IDS = {
 
 PART_CLASSES   = {"Part", "WedgePart", "CornerWedgePart", "TrussPart",
                   "SpawnLocation", "MeshPart", "UnionOperation", "IntersectOperation"}
-SCRIPT_CLASSES = {"Script": 8, "LocalScript": 7, "RemoteEvent": 13,
-                  "BindableEvent": 14, "RemoteFunction": 15}
-SOURCE_SCRIPT_CLASSES = {"Script", "LocalScript"}
+                  
+SCRIPT_CLASSES = {
+    "Script": 8, "LocalScript": 7, "ModuleScript": 9,
+    "RemoteEvent": 13, "BindableEvent": 14, "RemoteFunction": 15,
+}
+SOURCE_SCRIPT_CLASSES = {"Script", "LocalScript", "ModuleScript"}
+
 LIGHT_CLASSES  = {"PointLight", "SpotLight", "SurfaceLight"}
 
 
@@ -198,7 +202,8 @@ def decode_color3uint8(value):
 # =========================================================
 #  CHILD BLOB BUILDER  (matches the plugin's binary layout)
 # =========================================================
-FACE_ID = {"Front": 0, "Back": 1, "Top": 2, "Bottom": 3, "Left": 4, "Right": 5}
+# Roblox NormalId ordering — matches what Vortex uses for light faces.
+FACE_ID = {"Right": 0, "Top": 1, "Back": 2, "Left": 3, "Front": 4, "Bottom": 5}
 
 
 def f2b(f):
