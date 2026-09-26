@@ -43,10 +43,28 @@ CONVERTER_CANDIDATES = [
 TARGET_CANDIDATES = [
     HERE / "TargetFiles",
     HERE.parent / "TargetFiles",
-    HERE,
-    HERE.parent,
 ]
 
+# =========================================================
+#  TERMINAL COLOURS
+# =========================================================
+import os
+os.system("")  # enables ANSI escape codes on Windows
+
+def _c(text, code):
+    return f"\033[{code}m{text}\033[0m"
+
+ORANGE = "38;5;208"   # bright orange
+GREEN  = "92"         # bright green
+RED    = "91"         # bright red
+CYAN   = "96"         # bright cyan
+DIM    = "90"         # dim grey
+
+def c_index(text):  return _c(text, ORANGE)
+def c_done(text):   return _c(text, GREEN)
+def c_error(text):  return _c(text, RED)
+def c_info(text):   return _c(text, CYAN)
+def c_dim(text):    return _c(text, DIM)
 
 def find_converters_dir():
     for c in CONVERTER_CANDIDATES:
