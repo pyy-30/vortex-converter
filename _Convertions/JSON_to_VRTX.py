@@ -1,28 +1,43 @@
 import io
 import json
+import math
 import struct
+import sys
 from pathlib import Path
 import zstandard as zstd
+
+_CONVERTER_DIR = Path(__file__).resolve().parent
+
+# Look for settings.py in the main project folder first, then fall back
+# to the same folder as this converter.
+for _candidate in (_CONVERTER_DIR.parent, _CONVERTER_DIR):
+    if (_candidate / "settings.py").exists():
+        sys.path.insert(0, str(_candidate))
+        break
+import settings
+
 
 # =========================================================
 #  VERSIONING
 # =========================================================
-SUPPORTED_JSON_VERSION     = 1   # the "version" field this converter supports
-CONTAINER_VERSION_TO_WRITE = 4   # byte we write after "VRTX" in the output file
-DOWNLOAD_URL = "https://github.com/YOUR-REPO/vortex-converter/releases/latest"
+SUPPORTED_JSON_VERSION     = 1
+CONTAINER_VERSION_TO_WRITE = 4
+DOWNLOAD_URL = "https://github.com/pyy-30/vortex-converter/releases/latest"
 
 
 def _check_json_version(data):
     v = int(data.get("version", 1))
     if v < SUPPORTED_JSON_VERSION:
         raise SystemExit(
-            f"[JSON] File version {v} is older than this converter supports ({SUPPORTED_JSON_VERSION}).\n"
+            f"[JSON] File version {v} is older than this converter supports "
+            f"({SUPPORTED_JSON_VERSION}).\n"
             f"  This JSON was produced by an older plugin or converter.\n"
             f"  Regenerate it with the current plugin."
         )
     if v > SUPPORTED_JSON_VERSION:
         raise SystemExit(
-            f"[JSON] File version {v} is newer than this converter supports ({SUPPORTED_JSON_VERSION}).\n"
+            f"[JSON] File version {v} is newer than this converter supports "
+            f"({SUPPORTED_JSON_VERSION}).\n"
             f"  Download a newer converter: {DOWNLOAD_URL}"
         )
 
@@ -30,20 +45,6 @@ def _check_json_version(data):
 # =========================================================
 #  CONSTANTS
 # =========================================================
-SERVICE_TYPES = {
-    0: "Workspace",
-    1: "Lighting",
-    10: "ReplicatedStorage",
-    11: "StarterPlayerScripts",
-    12: "ServerScriptService",
-}
-SCRIPT_TYPES = {
-    7: "LocalScript",
-    8: "Script",
-    13: "RemoteEvent",
-    14: "BindableEvent",
-    15: "RemoteFunction",
-}
 MATERIAL_NAMES = {
     "Smooth": 0, "Plastic": 1, "Wood": 2, "Metal": 3,
     "Grass": 4, "Ice": 5, "Paint": 6,
@@ -51,16 +52,19 @@ MATERIAL_NAMES = {
 DEFAULT_SCRIPT_TRAILING = {
     7:  "01 00 00 00 00 00 00 00 00 00",
     8:  "01 00 00 00 00 00 00 00 00 00",
+    9:  "01 00 00 00 00 00 00 00 00 00",   # ModuleScript
     13: "00",
     14: "00",
     15: "00",
 }
+
+DEFAULT_CHILD_BLOB = "00 " * 24
 SCRIPT_MARKER_BYTES_SCRIPT = 0x01000000
 SCRIPT_MARKER_BYTES_REMOTE = 0
 
 
 def normalize_marker(marker, type_id):
-    default = SCRIPT_MARKER_BYTES_SCRIPT if type_id in (7, 8) else SCRIPT_MARKER_BYTES_REMOTE
+    default = SCRIPT_MARKER_BYTES_SCRIPT if type_id in (7, 8, 9) else SCRIPT_MARKER_BYTES_REMOTE
     if marker is None:
         return default
     marker = int(marker)
@@ -72,15 +76,186 @@ def normalize_marker(marker, type_id):
 
 
 # =========================================================
+#  SHAPE RASTERIZATION
+# =========================================================
+def rasterize_shape(obj):
+    shape = obj.get("shape", "Block")
+    if shape in ("Block", None):
+        return [obj]
+
+    pos  = obj.get("position", [0, 0, 0])
+    rot  = obj.get("rotation", [0, 0, 0, 1])
+    size = obj.get("size", [1, 1, 1])
+
+    acc = max(1, int(settings.CUSTOM_SHAPES_ACCURACY))
+    longest = max(size)
+    if longest <= 0:
+        return [obj]
+
+    nx = max(1, int(round(acc * size[0] / longest)))
+    ny = max(1, int(round(acc * size[1] / longest)))
+    nz = max(1, int(round(acc * size[2] / longest)))
+
+    while nx * ny * nz > settings.MAX_BLOCKS_PER_SHAPE:
+        if nx >= ny and nx >= nz and nx > 1:    nx -= 1
+        elif ny >= nz and ny > 1:               ny -= 1
+        elif nz > 1:                            nz -= 1
+        else:                                   break
+
+    bsx, bsy, bsz = size[0] / nx, size[1] / ny, size[2] / nz
+
+    qx, qy, qz, qw = rot
+    m = [
+        [1 - 2*qy*qy - 2*qz*qz, 2*qx*qy - 2*qz*qw, 2*qx*qz + 2*qy*qw],
+        [2*qx*qy + 2*qz*qw,     1 - 2*qx*qx - 2*qz*qz, 2*qy*qz - 2*qx*qw],
+        [2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw,     1 - 2*qx*qx - 2*qy*qy],
+    ]
+
+    def rotate(vx, vy, vz):
+        return (
+            m[0][0]*vx + m[0][1]*vy + m[0][2]*vz,
+            m[1][0]*vx + m[1][1]*vy + m[1][2]*vz,
+            m[2][0]*vx + m[2][1]*vy + m[2][2]*vz,
+        )
+
+    base_name = obj.get("name", "Part")
+    blocks = []
+    for ix in range(nx):
+        lx = -size[0]/2 + (ix + 0.5) * bsx
+        for iy in range(ny):
+            ly = -size[1]/2 + (iy + 0.5) * bsy
+            for iz in range(nz):
+                lz = -size[2]/2 + (iz + 0.5) * bsz
+
+                if shape == "Cylinder":
+                    r = min(size[1], size[2]) / 2
+                    if (ly*ly + lz*lz) > r*r: continue
+                elif shape == "Ball":
+                    r = min(size) / 2
+                    if (lx*lx + ly*ly + lz*lz) > r*r: continue
+                elif shape == "Wedge":
+                    if (size[2]*ly + size[1]*lz) > 0: continue
+                # Union / CornerWedge: keep all blocks (bounding box fill)
+
+                wx, wy, wz = rotate(lx, ly, lz)
+
+                block = {
+                    "type_id":       2,
+                    "class":         "Part",
+                    "name":          base_name,
+                    "kind":          "part",
+                    "enabled":       True,
+                    "parent_id":     obj.get("parent_id"),
+                    "flag2":         1,
+                    "inner_name":    base_name,
+                    "position":      [
+                        settings.round_value(pos[0] + wx),
+                        settings.round_value(pos[1] + wy),
+                        settings.round_value(pos[2] + wz),
+                    ],
+                    "rotation":      rot,
+                    "size":          [
+                        settings.round_value(bsx),
+                        settings.round_value(bsy),
+                        settings.round_value(bsz),
+                    ],
+                    "color":         obj.get("color", {"r": 0.5, "g": 0.5, "b": 0.5, "a": 1}),
+                    "transparency":  obj.get("transparency", 0),
+                    "material_id":   obj.get("material_id", 1),
+                    "material":      obj.get("material", "Plastic"),
+                    "shape":         "Block",
+                    "flags":         obj.get("flags", [0, 1, 1, 1, 0, 0]),
+                    "truss":         False,
+                    "group":         obj.get("group"),
+                    "textures":       [],
+                    "point_lights":   [],
+                    "spot_lights":    [],
+                    "surface_lights": [],
+                    "child_blob_hex": DEFAULT_CHILD_BLOB,
+                }
+                blocks.append(block)
+
+    return blocks if blocks else [obj]
+
+def flatten_parents(objects):
+    """
+    Vortex can't have a part as a parent. Any part or group whose parent_id
+    points at a part gets walked up to the nearest non-part ancestor
+    (a service or a group).
+    """
+    for o in objects:
+        kind = o.get("kind")
+        if kind not in ("part", "group"):
+            continue
+        pid = o.get("parent_id")
+        seen = set()
+        while pid is not None and pid not in seen and 0 <= pid < len(objects):
+            seen.add(pid)
+            parent_obj = objects[pid]
+            if parent_obj.get("kind") != "part":
+                break
+            pid = parent_obj.get("parent_id")
+        o["parent_id"] = pid if pid is not None else 0
+
+# =========================================================
+#  FILTERS
+# =========================================================
+def apply_filters(objects):
+    flatten_parents(objects)
+    # 1. Drop group objects entirely if IGNORE_MODELS is set.
+    if settings.IGNORE_MODELS:
+        remap = {}
+        for i, o in enumerate(objects):
+            if o.get("kind") == "group":
+                remap[i] = o.get("parent_id", 0)
+        # Resolve chains
+        for i in list(remap.keys()):
+            p = remap[i]
+            seen = set()
+            while p in remap and p not in seen:
+                seen.add(p)
+                p = remap[p]
+            remap[i] = p
+        for o in objects:
+            pid = o.get("parent_id")
+            if pid in remap:
+                o["parent_id"] = remap[pid]
+
+        objects = [o for o in objects if o.get("kind") != "group"]
+
+    # 2. Drop scripts if IGNORE_SCRIPTS
+    if settings.IGNORE_SCRIPTS:
+        objects = [o for o in objects if o.get("kind") != "script"]
+
+    # 3. Rasterize shapes
+    if settings.SAVE_CUSTOM_SHAPES:
+        expanded = []
+        for o in objects:
+            if o.get("kind") == "part":
+                expanded.extend(rasterize_shape(o))
+            else:
+                expanded.append(o)
+        objects = expanded
+
+    return objects
+
+
+# =========================================================
 #  BUILD
 # =========================================================
 def build_vrtx(data):
     _check_json_version(data)
 
     version = int(data.get("version", 1))
-    uuid = data["uuid"]
-    objects = data.get("objects", [])
-    lighting = data.get("lighting")
+
+    # UUID: prefer settings, then file, then generated
+    uuid = settings.PROJECT_ID or data.get("uuid")
+    if not uuid:
+        import uuid as _uuid
+        uuid = _uuid.uuid4().hex
+
+    lighting = data.get("lighting") if settings.SAVE_LIGHTING else None
+    objects = apply_filters(list(data.get("objects", [])))
 
     out = bytearray()
     out.append(version)
@@ -104,11 +279,7 @@ def build_vrtx(data):
             if len(ph) != 28:
                 ph = "00" * 14
             out += bytes.fromhex(ph)
-        # ---------- GROUPS ----------
-        elif kind == "group":
-            out.append(1)  # enabled/flag
-            out += struct.pack("<Q", int(obj.get("parent_id", 0)))
-            out += b"\x00" * 13  # reserved
+
         # ---------- PARTS ----------
         elif kind == "part":
             out.append(1 if obj.get("enabled", True) else 0)
@@ -142,7 +313,17 @@ def build_vrtx(data):
             cb_hex = obj.get("child_blob_hex", "").replace(" ", "")
             if cb_hex:
                 out += bytes.fromhex(cb_hex)
-
+            else:
+                out += bytes.fromhex(DEFAULT_CHILD_BLOB.replace(" ", ""))
+        # ---------- GROUPS ----------
+        elif kind == "group":
+            out.append(1)  # enabled flag
+            out += struct.pack("<Q", int(obj.get("parent_id", 0)))
+            padding = obj.get("padding_hex", "").replace(" ", "")
+            padding_bytes = bytes.fromhex(padding) if padding else b"\x00" * 13
+            if len(padding_bytes) != 13:
+                padding_bytes = b"\x00" * 13
+            out += padding_bytes
         # ---------- SCRIPTS / REMOTES ----------
         elif kind == "script":
             out.append(1 if obj.get("enabled", True) else 0)
@@ -191,10 +372,6 @@ def build_vrtx(data):
         out += struct.pack("<4f", 0.0, 0.0, 0.0, 1.0)
 
     # ---------- COMPRESSION ----------
-    # Compress normally, then rewrite the zstd frame header to match Vortex's format.
-    # Vortex writes:  28 B5 2F FD  00  68  <blocks>
-    #   FHD = 0x00  →  FCS_flag=0, single_segment=0, no checksum
-    #   WD  = 0x68  →  window_log = 23 (8 MB)
     cctx = zstd.ZstdCompressor(write_content_size=False)
     raw = cctx.compress(bytes(out))
 
@@ -209,14 +386,12 @@ def build_vrtx(data):
 
 
 # =========================================================
-#  ENTRYPOINT
+#  ENTRY
 # =========================================================
 if __name__ == "__main__":
-    import sys
     import traceback
 
-    # Parse args: positional files, optional --verbose / -v flag anywhere
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    args  = [a for a in sys.argv[1:] if not a.startswith("-")]
     flags = [a for a in sys.argv[1:] if a.startswith("-")]
     verbose = any(f in ("-v", "--verbose") for f in flags)
 
@@ -224,7 +399,7 @@ if __name__ == "__main__":
         print("Usage: py JSON_to_VRTX.py input.json [output.vrtx] [--verbose]")
         sys.exit(1)
 
-    input_path = Path(args[0])
+    input_path  = Path(args[0])
     with open(input_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -242,20 +417,21 @@ if __name__ == "__main__":
     with open(output_path, "wb") as f:
         f.write(file_bytes)
 
-    # ---- summary ----
-    objects = data.get("objects", [])
-    services = sum(1 for o in objects if o.get("kind") == "service")
-    parts    = sum(1 for o in objects if o.get("kind") == "part")
-    scripts  = sum(1 for o in objects if o.get("kind") == "script")
+    # Summary based on the *filtered* objects the writer actually saw
+    filtered = apply_filters(list(data.get("objects", [])))
+    services = sum(1 for o in filtered if o.get("kind") == "service")
+    parts    = sum(1 for o in filtered if o.get("kind") == "part")
+    scripts  = sum(1 for o in filtered if o.get("kind") == "script")
+    groups   = sum(1 for o in filtered if o.get("kind") == "group")
 
     print(f"Saved: {output_path}  ({len(file_bytes)} bytes)")
     print(f"  services : {services}")
     print(f"  parts    : {parts}")
+    print(f"  groups   : {groups}")
     print(f"  scripts  : {scripts}")
-    print(f"  total    : {len(objects)}")
+    print(f"  total    : {len(filtered)}")
 
     if verbose:
         print("\n" + "=" * 60)
-        # Dump the raw .vrtx bytes as text (garbage chars expected — it's binary)
         print(file_bytes.decode("utf-8", errors="replace"))
         print("=" * 60)
