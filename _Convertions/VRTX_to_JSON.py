@@ -37,8 +37,9 @@ SERVICE_TYPES = {
     12: "ServerScriptService",
 }
 SCRIPT_TYPES = {
-    7:  "LocalScript",
-    8:  "Script",
+    7: "LocalScript",
+    8: "Script",
+    9: "ModuleScript",
     13: "RemoteEvent",
     14: "BindableEvent",
     15: "RemoteFunction",
@@ -47,7 +48,7 @@ MATERIAL_NAMES = {
     0: "Smooth", 1: "Plastic", 2: "Wood", 3: "Metal",
     4: "Grass", 5: "Ice", 6: "Paint",
 }
-SCRIPT_TRAILING_LEN = {"Script": 10, "LocalScript": 10,
+SCRIPT_TRAILING_LEN = {"Script": 10, "LocalScript": 10, "ModuleScript": 10,
                        "RemoteEvent": 1, "BindableEvent": 1, "RemoteFunction": 1}
 PARENT_IDS = {
     0: "Workspace", 1: "Lighting", 2: "ReplicatedStorage",
@@ -294,7 +295,7 @@ if __name__ == "__main__":
     print(f"  parts    : {parts}")
     print(f"  scripts  : {scripts}")
     print(f"  total    : {len(result['objects'])}")
-    print(f"  copied to clipboard ✓")
+    print(f"  copied to clipboard")
 
     if verbose:
         print("\n" + "=" * 60)
