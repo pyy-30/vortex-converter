@@ -183,23 +183,24 @@ def main():
     json_path = targets_dir / (in_path.stem + ".json")
     out_path  = Path(args[1]).resolve() if len(args) > 1 else targets_dir / (in_path.stem + ".rbxlx")
 
-    print(f"Converters : {converters_dir}")
-    print(f"Target     : {in_path.name}")
-    print(f"[1/2] {in_path.name} -> {json_path.name}")
+    print(f"{c_info('Converters')} : {c_dim(str(converters_dir))}")
+    print(f"{c_info('Target')}     : {in_path.name}")
+    print(f"{c_index('[1/2]')} {in_path.name} -> {json_path.name}")
     try:
         run([sys.executable, str(converters_dir / "VRTX_to_JSON.py"), str(in_path)], verbose)
     except subprocess.CalledProcessError as e:
-        print("VRTX_to_JSON.py failed:")
+        print(c_error("VRTX_to_JSON.py failed:"))
         if e.stderr:
             print(e.stderr.decode(errors="replace"))
         sys.exit(1)
-
-    print(f"[2/2] {json_path.name} -> {out_path.name}")
+        
+    print(f"{c_index('[2/2]')} {json_path.name} -> {out_path.name}")
+    
     try:
         run([sys.executable, str(converters_dir / "JSON_to_RBXLX.py"),
              str(json_path), str(out_path)], verbose)
     except subprocess.CalledProcessError as e:
-        print("JSON_to_RBXLX.py failed:")
+        print(c_error("JSON_to_RBXLX.py failed:"))
         if e.stderr:
             print(e.stderr.decode(errors="replace"))
         sys.exit(1)
@@ -210,7 +211,7 @@ def main():
         except OSError:
             pass
 
-    print(f"\nDone. Output: {out_path}")
+    print(f"\n{c_done('Done.')} Output: {out_path}")
 
 
 if __name__ == "__main__":
