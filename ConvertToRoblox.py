@@ -158,8 +158,11 @@ def main():
     if in_path.suffix.lower() != ".vrtx":
         print(f"Warning: input is not a .vrtx file ({in_path.suffix}), continuing anyway")
 
-    json_path = in_path.with_suffix(".json")
-    out_path  = Path(args[1]).resolve() if len(args) > 1 else in_path.with_suffix(".rbxlx")
+    # Force outputs into the TargetFiles folder, regardless of where the
+    # input file was found.
+    targets_dir = find_targets_dir() or in_path.parent
+    json_path = targets_dir / (in_path.stem + ".json")
+    out_path  = Path(args[1]).resolve() if len(args) > 1 else targets_dir / (in_path.stem + ".rbxlx")
 
     print(f"Converters : {converters_dir}")
     print(f"Target     : {in_path.name}")
