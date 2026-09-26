@@ -1,4 +1,4 @@
-# **Thank you for choosing PY\_30's Roblox <-> Vortex Converter (v0.4)**
+# **Thank you for choosing PY\_30's Roblox <-> Vortex Converter (v0.5.3)**
 
 **Full Toolchain Documentation:**
 
@@ -7,9 +7,9 @@
 ## **| WHAT THIS DOES**
 
 * Using this, in seconds, you can transition your Roblox places into a Vortex place *(the other way around too)*
-* It cleanly converts: Parts, TrussParts, Models, Scripts *(excluding ModuleScripts)*, Remote Events / Function, Bindable Events, SpawnLocations 
-* What does **NOT** convert: currently, **Vortex > Roblox** converts full games, although **Roblox > Vortex** converts features only available in Vortex v0.4.
-* Use this as more of a test, as of v0.4, Vortex is very limited, and does not let you create great games compared to Roblox. [Scripting in Vortex](https://create.playvortex.io/) is also very limited. Do not use this to switch engines *(yet)*.
+* It cleanly converts: Parts, TrussParts, Models, Server Scripts, Local Scripts, Module Scripts, Remote Events / Function, Bindable Events, SpawnLocations 
+* What does **NOT** convert: Body Movers (BodyVelocity, BodyPosition, etc.) are dropped. Meshes and Unions export as their bounding boxes. Nested groups inside groups may render incorrectly in some Vortex versions — if this happens, set IGNORE_MODELS = True in **settings.py**.
+* Use this as more of a test, as of v0.5.3, Vortex is very limited, and does not let you create great games compared to Roblox. [Scripting in Vortex](https://create.playvortex.io/) is also very limited. Do not use this to switch engines *(yet)*.
 
 
 
@@ -31,7 +31,7 @@
 
   pip install zstandard
 
-* Its used to decompress **.vrtx** files
+* It's used to decompress **.vrtx** files
 
 
 
@@ -47,7 +47,7 @@
 
 ### ***a) Roblox -> Vortex***
 
-1. Save your Roblox project as a **.rblxl** file.
+1. Save your Roblox project as a **.rbxlx** file.
 2. Insert it into a folder called *"TargetFiles"* located in the same folder as this file.
 3. Open **PowerShell** and open this folder's directory. *(ex. **cd "C:\\Users\\user\\Downloads\\vortex-converter-main"**)*
 4. Using **PowerShell**, run **ConvertToVortex.py** and pass in your file's name. *(ex. **py ConvertToVortex.py myGame.rbxlx**)*
@@ -70,19 +70,26 @@
 
 ### a) Optional Arguments
 
+* **[output-file]** - optional second positional argument, put the output somewhere other than next to the input
 * **--verbose** or **-v** - Print full output from each underlying converter script instead of hiding it
-* **--keep-json** - Save a **.json** file when the conversion finishes showing how every instance is ported to Vortex
-* **[output-file]** - Second positional arg: put the output somewhere other than next to the input
+* **--keep-json** - Save a **.json** file when the conversion finishes showing how every instance is ported to / exported from Vortex
 
 
-### b) Examples
+### b) settings.py
+
+* There's a **settings.py** file located inside the folder. You can customize what you would like to convert and how
+* Keep in mind this is experimental and may not 100% work as expected
+* About what every setting does can be found written in comments above the setting
+
+
+### c) Args Examples
 
 * **py ConvertToRoblox.py myscene.vrtx**
 * **py ConvertToRoblox.py myscene.vrtx --verbose**
 * **py ConvertToRoblox.py myscene.vrtx --keep-json**
 * **py ConvertToRoblox.py myscene.vrtx custom_name.rbxlx --verbose --keep-json**
-* **py ConvertToRoblox.py**                           (auto-picks if TargetFiles has one file)
-* **py ConvertToRoblox.py**                           (shows menu if multiple files present)
+* **py ConvertToRoblox.py**                           *(auto-picks if TargetFiles has one file)*
+* **py ConvertToRoblox.py**                           *(shows menu if multiple files present)*
 
 
 ## **| TROUBLESHOOTING**
@@ -92,3 +99,4 @@
 * Trying to convert outdated Vortex files could fail. If that happens, open your vortex file, make a small change (like moving a part) and save the file.
 * Trying to convert newer Vortex files than designed will fail. If that happens, please download the newer version, you can find every version uploaded in this repo.
 
+*Last updated: 2026-09-26 (v0.5.3 support)*
